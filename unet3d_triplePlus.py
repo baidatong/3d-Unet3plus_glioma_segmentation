@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorpack.models import (
      BatchNorm, layer_register
  )
-from custom_ops import BatchNorm3d, InstanceNorm5d
+from custom_ops import BatchNorm3d, InstanceNorm5d ,GroupNorm5d
 import numpy as np
 import config
 import tensorflow.contrib.slim as slim
@@ -20,11 +20,11 @@ import tensorflow.contrib.slim as slim
 PADDING = "SAME"
 DATA_FORMAT = "channels_first"
 s_num = 2
-BASE_FILTER1 = 16
-BASE_FILTER2 = 32
-BASE_FILTER3 = 64
-BASE_FILTER4 = 128
-BASE_FILTER5 = 256
+BASE_FILTER1 = 16*s_num
+BASE_FILTER2 = 32*s_num
+BASE_FILTER3 = 64*s_num
+BASE_FILTER4 = 128*s_num
+BASE_FILTER5 = 256*s_num
 BASE_FILTER6 = 64
 BASE_FILTER62 = 320
 BASE_FILTER7 = 32
@@ -39,9 +39,7 @@ BASE_FILTER92 = 40
 def unet3d(inputs):
     # filters; bacthnormaliztation dowsnsample upsample droupout ; full-scale surpervision; clssification;
 
-    depth = config.DEPTH
-    filters = []
-    down_list = []
+
     deep_supervision = None
     layer0 =tf.layers.conv3d(inputs=inputs,
                              filters=BASE_FILTER1,   #20
@@ -52,14 +50,14 @@ def unet3d(inputs):
                              data_format=DATA_FORMAT,
                              name="layer1_1")
 
-    layer1 = tf.layers.conv3d(inputs = layer0, filters=BASE_FILTER1,   #20
+    layer1 = tf.layers.conv3d(inputs = layer0 , filters=BASE_FILTER1,   #20
                               kernel_size = (3,3,3),
                               strides=1,
                               padding=PADDING,
                               activation=lambda x, name=None: BN_Relu(x),
                               data_format=DATA_FORMAT,
                               name="layer1_2")
-    layer1 = tf.layers.conv3d(inputs = layer0, filters=BASE_FILTER1,  #20
+    layer1 = tf.layers.conv3d(inputs = layer1, filters=BASE_FILTER1,  #20
                               kernel_size = (3,3,3),
                               strides=1,
                               padding=PADDING,
@@ -142,7 +140,7 @@ def unet3d(inputs):
                                      kernel_size = (3, 3, 3),
                                      strides = 1,
                                      padding=PADDING,
-                                     activation=lambda x, name=None: BN_Relu(x),
+                                     activation=lambda x, name=None: BN_Relu(x,4),
                                      data_format=DATA_FORMAT,
                                      name='layer4_1')
     layer4 = tf.layers.conv3d(inputs = layer4,               # z/8 x/8 y/8 basefilter4
@@ -150,7 +148,7 @@ def unet3d(inputs):
                                      kernel_size = (3, 3, 3),
                                      strides = 1,
                                      padding=PADDING,
-                                     activation=lambda x, name=None: BN_Relu(x),
+                                     activation=lambda x, name=None: BN_Relu(x,4),
                                      data_format=DATA_FORMAT,
                                      name='layer4_2')
     layer4 = tf.layers.conv3d(inputs = layer4,             # z/8 x/8 y/8 basefilter4
@@ -158,7 +156,7 @@ def unet3d(inputs):
                               kernel_size=(3, 3, 3),
                               strides=1,
                               padding=PADDING,
-                              activation=lambda x, name=None: BN_Relu(x),
+                              activation=lambda x, name=None: BN_Relu(x,4),
                               data_format=DATA_FORMAT,
                               name='layer4_3')
     layer4 = tf.add(layer4,down3)                         # z/8 x/8 y/8 basefilter4
@@ -167,7 +165,7 @@ def unet3d(inputs):
                                      kernel_size = (3, 3, 3),
                                      strides = (2, 2, 2),
                                      padding=PADDING,
-                                     activation=lambda x, name=None: BN_Relu(x),
+                                     activation=lambda x, name=None: BN_Relu(x,4),
                                      data_format=DATA_FORMAT,
                                      name='down4')
 
@@ -176,7 +174,7 @@ def unet3d(inputs):
                                      kernel_size = (3, 3, 3),
                                      strides = 1,
                                      padding=PADDING,
-                                     activation=lambda x, name=None: BN_Relu(x),
+                                     activation=lambda x, name=None: BN_Relu(x,4),
                                      data_format=DATA_FORMAT,
                                      name='layer5_1')
     layer5 = tf.layers.conv3d(inputs = layer5,
@@ -184,7 +182,7 @@ def unet3d(inputs):
                                      kernel_size = (3, 3, 3),
                                      strides = 1,
                                      padding=PADDING,
-                                     activation=lambda x, name=None: BN_Relu(x),
+                                     activation=lambda x, name=None: BN_Relu(x,4),
                                      data_format=DATA_FORMAT,
                                      name='layer5_2')
     layer5 = tf.layers.conv3d(inputs = layer5,
@@ -192,7 +190,7 @@ def unet3d(inputs):
                               kernel_size=(3, 3, 3),
                               strides=1,
                               padding=PADDING,
-                              activation=lambda x, name=None: BN_Relu(x),
+                              activation=lambda x, name=None: BN_Relu(x,32),
                               data_format=DATA_FORMAT,
                               name='layer5_3')
     layer5 = tf.add(layer5, down4)         # z/16 x/16 y/16 basefilter5
@@ -290,7 +288,7 @@ def unet3d(inputs):
                                  activation=lambda x, name=None: BN_Relu(x),
                                  data_format=DATA_FORMAT,
                                  name='decode2_3')
-    decode2_4 = max_pool3d(inputs=layer2,depth=True,stride=2);     # tf.layers.max_pooling3d(inputs=layer2,depth=True)
+    decode2_4 = max_pool3d(inputs=layer2,depth=True,stride=2)     # tf.layers.max_pooling3d(inputs=layer2,depth=True)
     decode2_4 = tf.layers.conv3d(inputs = decode2_4,
                                  filters=BASE_FILTER7,  #16
                                  kernel_size=(3, 3, 3),
@@ -566,9 +564,10 @@ def UnetUpsample(prefix, l, num_filters,data_format=DATA_FORMAT,scale=2):
     return l
 
 
-def BN_Relu(x):
+def BN_Relu(x,g=4):
     if config.INSTANCE_NORM:
-        l = InstanceNorm5d('ins_norm', x, data_format=DATA_FORMAT)
+        l = GroupNorm5d('ins_norm', x,G=g, data_format=DATA_FORMAT)
+       # l = InstanceNorm5d('ins_norm', x, data_format=DATA_FORMAT)
     else:
         l = BatchNorm3d('bn', x, axis=1 if DATA_FORMAT == 'channels_first' else -1)
     l = tf.nn.relu(l)
