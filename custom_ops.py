@@ -4,7 +4,13 @@
 # Code are borrowed from tensorpack modified to support 5d input for batchnorm.
 # https://github.com/tensorpack/tensorpack/blob/master/tensorpack/models/batch_norm.py
 ###
+from tensorflow.keras.layers import Layer, InputSpec
+from tensorflow.keras import initializers
+from tensorflow.keras import regularizers
+from tensorflow.keras import constraints
+from tensorflow.keras import backend as K
 
+from tensorflow.keras.utils import get_custom_objects
 import tensorflow as tf
 from tensorflow.contrib.framework import add_model_variable
 from tensorflow.python.training import moving_averages
@@ -77,6 +83,69 @@ def InstanceNorm5d(x, epsilon=1e-5, use_affine=True, gamma_init=None, data_forma
         vh.gamma = gamma
         vh.beta = beta
     return ret
+@layer_register()
+def GroupNorm5d(x, G,epsilon=1e-5, use_affine=True, gamma_init=None, data_format='channels_last'):
+    """
+    (x, epsilon=1e-5, use_affine=True, gamma_init=None, data_format='channels_last'):
+    Instance Normalization, as in the paper:
+    `Instance Normalization: The Missing Ingredient for Fast Stylization
+    <https://arxiv.org/abs/1607.08022>`_.
+    Args:
+        x (tf.Tensor): a 4D tensor.
+        epsilon (float): avoid divide-by-zero
+        use_affine (bool): whether to apply learnable affine transformation
+    """
+    data_format = get_data_format(data_format, keras_mode=True)
+    shape = x.get_shape().as_list()
+    # assert len(shape) == 4, "Input of InstanceNorm has to be 4D!"
+    if len(shape) == 5:
+        if data_format == 'NHWC':
+            B,N,H,W,C = shape
+            x = tf.reshape(x, [B, N,H,W,G,C//G])
+            axis = [1, 2, 3,4]
+            ch = shape[4]
+            new_shape = [1, 1, 1, 1, 1,ch//G]
+        else:
+            B,C, N, H, W  = shape
+            x = tf.reshape(x, [B, C//G,G,N,H,W])
+
+            axis = [2, 3, 4, 5]
+            ch = shape[1]
+            new_shape = [1, ch//G, 1, 1, 1,1]
+    # else:
+    #     if data_format == 'NHWC':
+    #         axis = [1, 2]
+    #         ch = shape[3]
+    #         new_shape = [1, 1, 1, ch]
+    #     else:
+    #         axis = [2, 3]
+    #         ch = shape[1]
+    #         new_shape = [1, ch, 1, 1]
+    assert ch is not None, "Input of InstanceNorm require known channel!"
+
+    mean, var = tf.nn.moments(x, axis, keep_dims=True)
+
+    if not use_affine:
+        t2 = tf.divide(x - mean, tf.sqrt(var + epsilon), name='output0')
+        return tf.reshape(t2,shape)#tf.divide(x - mean, tf.sqrt(var + epsilon), name='output')
+
+    beta = tf.get_variable('beta', [ch//G], initializer=tf.constant_initializer())
+    beta = tf.reshape(beta, new_shape)
+    if gamma_init is None:
+        gamma_init = tf.constant_initializer(1.0)
+    gamma = tf.get_variable('gamma', [ch//G], initializer=gamma_init)
+    gamma = tf.reshape(gamma, new_shape)
+    ret = tf.nn.batch_normalization(x, mean, var, beta, gamma, epsilon, name='output')
+
+    vh = ret.variables = VariableHolder()
+    if use_affine:
+        vh.gamma = gamma
+        vh.beta = beta
+    ret = tf.reshape(ret,shape)
+    return ret
+
+
+
 
 
 
@@ -202,7 +271,95 @@ def update_bn_ema(xn, batch_mean, batch_var,
     })
 def BatchNorm3d(inputs, axis=None, training=None, momentum=0.9, epsilon=1e-5,
               center=True, scale=True,
-              beta_initializer=tf.zeros_initializer(),
+              beta_initializer=tf.zero# -*- coding: utf-8 -*-
+2
+# File: custom_ops.py
+3
+###
+4
+# Code are borrowed from tensorpack modified to support 5d input for batchnorm.
+5
+# https://github.com/tensorpack/tensorpack/blob/master/tensorpack/models/batch_norm.py
+6
+###
+7
+​
+8
+import tensorflow as tf
+9
+from tensorflow.contrib.framework import add_model_variable
+10
+from tensorflow.python.training import moving_averages
+11
+import re
+12
+import six
+13
+import functools
+14
+​
+15
+from tensorpack.utils import logger
+16
+from tensorpack.utils.argtools import get_data_format
+17
+from tensorpack.tfutils.tower import get_current_tower_context
+18
+from tensorpack.tfutils.common import get_tf_version_tuple #get_tf_version_number
+19
+from tensorpack.tfutils.collection import backup_collection, restore_collection
+20
+from tensorpack import layer_register, VariableHolder
+21
+from tensorpack.tfutils.varreplace import custom_getter_scope
+22
+​
+23
+__all__ = ['BatchNorm', 'BatchRenorm']
+24
+​
+25
+# decay: being too close to 1 leads to slow start-up. torch use 0.9.
+26
+# eps: torch: 1e-5. Lasagne: 1e-4
+27
+​
+28
+@layer_register()
+29
+def InstanceNorm5d(x, epsilon=1e-5, use_affine=True, gamma_init=None, data_format='channels_last'):
+30
+    """
+31
+    Instance Normalization, as in the paper:
+32
+    `Instance Normalization: The Missing Ingredient for Fast Stylization
+33
+    <https://arxiv.org/abs/1607.08022>`_.
+34
+    Args:
+35
+        x (tf.Tensor): a 4D tensor.
+36
+        epsilon (float): avoid divide-by-zero
+37
+        use_affine (bool): whether to apply learnable affine transformation
+38
+    """
+39
+    data_format = get_data_format(data_format, keras_mode=True)
+40
+    shape = x.get_shape().as_list()
+41
+    # assert len(shape) == 4, "Input of InstanceNorm has to be 4D!"
+42
+    if len(shape) == 5:
+43
+        if data_format == 'NHWC':
+44
+            axis = [1, 2, 3]
+45
+            ch = shape[4]s_initializer(),
               gamma_initializer=tf.ones_initializer(),
               virtual_batch_size=None,
               data_format='channels_last',
