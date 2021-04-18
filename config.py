@@ -51,7 +51,7 @@ STEP_PER_EPOCH = 100
 EVAL_EPOCH = 20
 
 # data path
-BASEDIR = "data_bias/dataset/BRATS2018/" #"data/dataset/BRATS2018/"   #'/data/dataset/BRATS2018/'
+BASEDIR = ‘’ #the path to dataset
 TRAIN_DATASET = ['training']
 VAL_DATASET = 'val'   # val or val17
 TEST_DATASET = 'val'
